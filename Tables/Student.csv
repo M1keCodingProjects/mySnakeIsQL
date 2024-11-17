@@ -1,0 +1,4 @@
+SId,Name,BirthDate
+integer,varchar(40),date
+0,John Doe,01/01/1997
+1,Alice Bob,31/10/2004
