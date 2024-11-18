@@ -19,3 +19,10 @@ Eventually someone will write a good description here..
 - Press `Enter` again to launch query
 - Once a query is done, if successful, you will be prompted to write another one: if you wish to **quit** the program instead, write `exit`
 - For now, any kind of **error** in the process fully halts the program.
+
+## Examples:
+### Select *:
+```SQL
+select *
+from Student
+```

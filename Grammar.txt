@@ -3,14 +3,14 @@ RuleName : Rule
 FinalRule :: combination of RegExp, Literals or DirectTokens
 ? = 0 or 1 times
 () = group
-(|) = either option
+| = either option
 + = 1 or more
 * = 0 or more
 --------------------------------
 Query : Select From Where? ";"?
 Select: "SELECT" AttrList
 AttrList: Attr ("," Attr)*
-Attr:: IDENT
+Attr:: "*" | IDENT
 From: "FROM" Table
 Table:: IDENT
 Where: "WHERE" Predicate

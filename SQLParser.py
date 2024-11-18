@@ -66,11 +66,17 @@ class SQLParser:
         # attribute, the reason why I don't set mustExist = False here is that the token is not consumed: we
         # are just checking wether there's a comma there. If not (nothing = not a comma) we are done with SELECT.
         while self.getNextToken(Token.TokenType.COMMA, isConsumed = False).isOk():
+            if(selectedColumns[-1] == Token.TokenType.ALL.value):
+                return Res.Err(Exception("Cannot select all (*) and also other attributes."))
+
             self.getNextToken() # Now if it is there we must consume it.
             if (selectedColumn := self.parseAttribute()).isErr(): return selectedColumn
+            
             selectedColumns.append(selectedColumn.unwrap().value)
 
-        return Res.Ok(selectedColumns)
+        return Res.Err(
+            Exception("Cannot select all (*) and also other attributes."
+        )) if len(selectedColumns) > 1 and (selectedColumns[-1] == Token.TokenType.ALL) else Res.Ok(selectedColumns)
     
     def parseFromClause(self) -> Res[str, Exception]:
         #TODO: avoid repetition: make a method to search for a specific keyword
@@ -84,8 +90,13 @@ class SQLParser:
         return self.parseTable().map(lambda token : token.value)
 
     def parseAttribute(self) -> Res[Token, UnexpectedEOIErr|TokenTypeErr]:
-        # IDENT
-        return self.getNextToken(Token.TokenType.IDENT)
+        # "*" | IDENT
+        if (attr := self.getNextToken()).isErr(): return attr
+
+        attr = attr.unwrap()
+        return Res.Ok(attr
+            ) if attr.type == Token.TokenType.IDENT or attr.type == Token.TokenType.ALL else Res.Err(
+            self.TokenTypeErr(Token.TokenType.IDENT, attr))
     
     def parseTable(self) -> Res[Token, UnexpectedEOIErr|TokenTypeErr]:
         # IDENT

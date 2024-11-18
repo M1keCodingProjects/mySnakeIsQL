@@ -1,7 +1,7 @@
 from Utils    import *
 from typing   import *
 from datetime import *
-
+from SQLTokenizer import Token
 ## Manage Data Source
 class SubfolderAccessErr(CustomErr, OSError):
     MSG = "Table access paths must always be plain file names and cannot contain the \"/\" character"
@@ -86,6 +86,8 @@ class Column:
     def __init__(self, id:int, name:ColumnName, domain:SQLDomain) -> None:
         self.id, self.name, self.domain = id, name, domain
 
+    def copy(self) -> Self: return Column(self.id, self.name, self.domain)
+
 class Table:
     MIN_COLUMN_WIDTH = 10
     def __init__(self, schema:list[Column], instance :list = []) -> None:
@@ -114,6 +116,11 @@ class Table:
         newSchema          :list[Column] = []
         selectedColumnsPos :list[int]    = []
         for columnName in columnNames:
+            if columnName == Token.TokenType.ALL.value:
+                selectedColumnsPos = list(range(self._columnsAmt))
+                newSchema = [column.copy() for column in self.schema.values()]
+                break
+
             if (selectedColumn := Res[Column, KeyError].wrap(
                 lambda columnName : self.schema[columnName], columnName)).isErr(): return selectedColumn
             

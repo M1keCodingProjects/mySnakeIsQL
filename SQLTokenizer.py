@@ -9,6 +9,7 @@ class Token:
         KEYWORD = "keyword"
         COMMA   = ","
         END     = ";"
+        ALL     = "*"
         IDENT   = "identifier"
 
         def __repr__(self) -> str:
@@ -23,6 +24,7 @@ class SQLTokenizer:
             (r"\s+",                     Token.TokenType.IGNORED),
             (r",",                       Token.TokenType.COMMA),
             (r";",                       Token.TokenType.END),
+            (r"\*",                      Token.TokenType.ALL),
             (fr"({'|'.join(keywords)})", Token.TokenType.KEYWORD),
             (r"[a-zA-Z_]\w*",            Token.TokenType.IDENT),
         )))
