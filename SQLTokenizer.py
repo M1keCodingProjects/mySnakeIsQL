@@ -1,16 +1,19 @@
 import re
-from enum  import StrEnum
+from enum  import Enum, StrEnum
 from Utils import Res
+from Predicate import CompareOp
 
 class Token:
     class TokenType(StrEnum):
-        UNKNOWN = "unknown"
-        IGNORED = "ignored"
-        KEYWORD = "keyword"
-        COMMA   = ","
-        END     = ";"
-        ALL     = "*"
-        IDENT   = "identifier"
+        UNKNOWN    = "unknown"
+        IGNORED    = "ignored"
+        KEYWORD    = "keyword"
+        COMMA      = ","
+        END        = ";"
+        ALL        = "*"
+        COMPARE_OP = "comparison operator"
+        INT        = "integer"
+        IDENT      = "identifier"
 
         def __repr__(self) -> str:
             return f"\"{self.value}\""
@@ -19,14 +22,19 @@ class Token:
         self.type, self.value = type, value
 
 class SQLTokenizer:
-    def __init__(self, keywords:list[str]) -> None:
+    def __init__(self, keywords:Enum) -> None:
+        keywords   = [kw.name for kw in keywords]
+        compareOps = [op.value for op in CompareOp]
+
         self.rules = tuple(map(lambda rule : (re.compile('^' + rule[0]), rule[1]), (
-            (r"\s+",                     Token.TokenType.IGNORED),
-            (r",",                       Token.TokenType.COMMA),
-            (r";",                       Token.TokenType.END),
-            (r"\*",                      Token.TokenType.ALL),
-            (fr"({'|'.join(keywords)})", Token.TokenType.KEYWORD),
-            (r"[a-zA-Z_]\w*",            Token.TokenType.IDENT),
+            (r"\s+",                       Token.TokenType.IGNORED),
+            (r",",                         Token.TokenType.COMMA),
+            (r";",                         Token.TokenType.END),
+            (r"\*",                        Token.TokenType.ALL),
+            (r"-?\d+",                     Token.TokenType.INT),
+            (fr"({'|'.join(compareOps)})", Token.TokenType.COMPARE_OP), #TODO: write utility to generalize this
+            (fr"({'|'.join(keywords)})",   Token.TokenType.KEYWORD),
+            (r"[a-zA-Z_]\w*",              Token.TokenType.IDENT),
         )))
 
     def tokenize(self, text:str) -> Res[list[Token], Exception]:

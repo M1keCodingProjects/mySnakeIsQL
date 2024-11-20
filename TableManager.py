@@ -1,7 +1,11 @@
-from Utils    import *
-from typing   import *
-from datetime import *
+from Predicate import *
+from Utils     import *
+from typing    import *
+from datetime  import *
 from SQLTokenizer import Token
+
+IS_DISPLAYED_ENTITY_SEP = False
+
 ## Manage Data Source
 class SubfolderAccessErr(CustomErr, OSError):
     MSG = "Table access paths must always be plain file names and cannot contain the \"/\" character"
@@ -88,16 +92,29 @@ class Column:
 
     def copy(self) -> Self: return Column(self.id, self.name, self.domain)
 
+    def __repr__(self) -> str: return f"Column #{self.id}, \"{self.name}\" : {self.domain}"
+
 class Table:
     MIN_COLUMN_WIDTH = 10
     def __init__(self, schema:list[Column], instance :list = []) -> None:
         self.schema   = { column.name.upper() : column for column in schema }
         self.instance = instance
 
-        self._entriesAmt      = len(instance)
         self._columnsAmt      = len(schema)
+        self._entriesAmt      = len(instance) // self._columnsAmt
+        self.setGraphics()
+
+    def setGraphics(self):
         self._columnNamesLens = list(map(
             lambda columnName : max(len(columnName), self.MIN_COLUMN_WIDTH), self.schema.keys()))
+        
+        schemaLine = "".join([
+            f"│ {column.name.center(self.MIN_COLUMN_WIDTH)} " for column in self.schema.values() ]) + "│\n"
+        
+        actualColumnSizes  = list(map(lambda l : l + 2, self._columnNamesLens))
+        self.entrySepLine  = '├' + produceTableSepWithDivits(actualColumnSizes, '┼') + "┤\n"
+        self.bottomLine    = '└' + produceTableSepWithDivits(actualColumnSizes, '┴') + "┘\n"
+        self.schemaDisplay = '┌' + produceTableSepWithDivits(actualColumnSizes) + "┐\n" + schemaLine + self.entrySepLine * (not IS_DISPLAYED_ENTITY_SEP)
 
     def addRow(self, cells:list[str]) -> Res[None, Exception]:
         # This method directly operates on unparsed data, I don't think this is wise
@@ -111,14 +128,18 @@ class Table:
         self._entriesAmt += 1
         return Res.Ok(None)
     
+    def getSchemaCopy(self) -> list[Column]:
+        return [ column.copy() for column in self.schema.values() ]
+
     def select(self, columnNames:list[Column.ColumnName]) -> Res[Self, Exception]:
         """ It is assumed that all columnNames are fully capitalized. """
+
         newSchema          :list[Column] = []
         selectedColumnsPos :list[int]    = []
         for columnName in columnNames:
             if columnName == Token.TokenType.ALL.value:
+                newSchema          = self.getSchemaCopy()
                 selectedColumnsPos = list(range(self._columnsAmt))
-                newSchema = [column.copy() for column in self.schema.values()]
                 break
 
             if (selectedColumn := Res[Column, KeyError].wrap(
@@ -136,26 +157,29 @@ class Table:
 
         return Res.Ok(Table(newSchema, newInstance))
 
+    def where(self, pred:Predicate = None) -> Res[Self, Exception]:
+        newInstance = []
+        for rowId in range(self._entriesAmt):
+            cellY = rowId * self._columnsAmt
+            if pred.isSatisfied(self.instance[self.schema[pred.attrName].id + cellY]):
+                newInstance.extend(self.instance[cellY:cellY + self._columnsAmt])
+
+        return Res.Ok(Table(self.getSchemaCopy(), newInstance))
+
     def __repr__(self) -> str:
-        tableStr = "".join([
-            f"| {column.name.center(self.MIN_COLUMN_WIDTH)} " for column in self.schema.values() ]) + "|\n"
-        
-        tableStr += '-' * (len(tableStr) - 1) + '\n'
+        tableStr = self.schemaDisplay
+        for y in range(self._entriesAmt):
+            tableStr += self.entrySepLine * IS_DISPLAYED_ENTITY_SEP
+            for x in range(self._columnsAmt):
+                strValue      = str(self.instance[x + y * self._columnsAmt])
+                columnNameLen = self._columnNamesLens[x]
 
-        i = 0
-        for cell in self.instance:
-            strValue      = str(cell)
-            columnNameLen = self._columnNamesLens[i]
+                if len(strValue) > columnNameLen: strValue = strValue[:columnNameLen - 3] + "..."
+                tableStr += f"│ {strValue.center(columnNameLen)} "
 
-            if len(strValue) > columnNameLen: strValue = strValue[:columnNameLen - 3] + "..."
-            tableStr += f"| {strValue.center(columnNameLen)} "
+            tableStr += "│\n"
 
-            i = (i + 1) % self._columnsAmt
-            if not i: tableStr += "|\n"
-
-        return tableStr
-
-#TODO: add a check somewhere to verify that table column names are all unique.
+        return tableStr + self.bottomLine
 
 def loadTable(name:str) -> Res[Table, Exception]:
     if (tableRows := retrieveRawTableFromLoc(name)).isErr(): return tableRows
@@ -179,6 +203,6 @@ def loadTable(name:str) -> Res[Table, Exception]:
     return Res.Ok(table)
 
 def main() -> None:
-    pass
+    print(loadTable("Student").unwrap().where(Predicate("SID", CompareOp.LESS, 10)).unwrap().select(["*"]).unwrap())
 
 if __name__ == '__main__': main()

@@ -2,6 +2,9 @@ from typing import *
 
 def flatten[T](l:list[list[T]]) -> list[T]: return [ item for innerList in l for item in innerList ]
 
+def produceTableSepWithDivits(segmentSizes :list[int], divitCh = '┬', lineCh = '─') -> str:
+    return divitCh.join([ lineCh * size for size in segmentSizes ])
+
 class CustomErr(Exception):
     MSG = ""
     def __init__(self, msg = ""): super().__init__(f"{self.MSG}. {msg}.")
@@ -39,3 +42,6 @@ class Res[T, E:Exception]:
     
     def flatten(self:"Res[Res[T, E], E]") -> "Res[T, E]":
         return self if self.isErr() or not isinstance(self.value, Res) else self.value
+    
+    def flatMap[U](self, mapper:Callable[[T], U]) -> "Res[U, E]":
+        return self.map(mapper).flatten()

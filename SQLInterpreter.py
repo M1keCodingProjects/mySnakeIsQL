@@ -19,17 +19,17 @@ class SQLInterpreter:
         runRes :Res[Table, Exception] = Res.wrap(
             lambda tableName : self.tables[tableName],
             self.parser.parsedQuery["table"]
-        ).map(lambda table : table.select(self.parser.parsedQuery["selectedColumns"])
-        ).flatten()
+        ).flatMap(lambda table: table.where(self.parser.parsedQuery["where"]) if self.parser.parsedQuery["where"] else table
+        ).flatMap(lambda table : table.select(self.parser.parsedQuery["selectedColumns"]))
+        
         if runRes.isErr(): return runRes
 
         print(runRes.unwrap())
         print("Query status: successful.\n")
         return Res.Ok(None)
     
-# Please rewrite all of this using a state machine.
+#TODO: rewrite all of this using a state machine.
 class UserInputCommand(StrEnum):
-    LaunchQuery = "RUN",
     QuitProgram = "EXIT"
 
 def main():
@@ -45,19 +45,19 @@ def main():
         nextLine    = ""
         programText = ""
         print(
-            f"Write your query below, then once it's ready write \"{UserInputCommand.LaunchQuery}\" " +
-            f"and hit Enter again.\nTo fully quit the program write \"{UserInputCommand.QuitProgram}\" " +
-            "and hit Enter again.\n")
+            f"Write your query below, making sure to end it with a semicolon(;), then press Enter to run the query." +
+            f"\nTo fully quit the program write \"{UserInputCommand.QuitProgram}\" and hit Enter again.\n")
         
         while True:
             match nextLine := input("").upper().strip():
-                case "": continue
                 case UserInputCommand.QuitProgram: return
-                case UserInputCommand.LaunchQuery:
+                case "": continue
+                case _:
+                    programText += ' ' + nextLine
+                    if ';' not in nextLine: continue
+                    
                     print("\nQuery registered..")
                     interpreter.parseAndRun(programText).unwrap()
                     break
-
-                case _: programText += ' ' + nextLine
 
 if __name__ == '__main__': main()

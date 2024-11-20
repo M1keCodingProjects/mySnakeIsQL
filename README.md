@@ -3,26 +3,26 @@ Eventually someone will write a good description here..
 
 ## How to run a Query
 - Run the `SQLInterpreter.py` file
-- Type your query, even using multiple lines:
+- Type your query, even using multiple lines, and make sure it ends with a semicolon(`;`):
   
   ```SQL
   select SId, Name
-  from Student
+  from Student;
   ```
-- Press `Enter` again and write `run` on its own line:
-
-  ```SQL
-  select SId, Name
-  from Student
-  run
-  ```
-- Press `Enter` again to launch query
+- Press `Enter` to run the query
 - Once a query is done, if successful, you will be prompted to write another one: if you wish to **quit** the program instead, write `exit`
 - For now, any kind of **error** in the process fully halts the program.
 
 ## Examples:
-### Select *:
+### Select all the columns:
 ```SQL
 select *
+from Student;
+```
+### Select where:
+Select only some entries based on a simple predicate. So far, the program only supports a simple comparison predicate in the form `Attribute ComparisonOperator IntegerValue`:
+```SQL
+select Name
 from Student
+where SId < 3;
 ```

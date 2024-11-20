@@ -15,4 +15,5 @@ From: "FROM" Table
 Table:: IDENT
 Where: "WHERE" Predicate
 Predicate: Attr CompareOp Value
+CompareOp: "==" | "!=" | "<>" | "<" | ">" | ">=" | "<="
 Value:: LITERAL

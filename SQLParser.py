@@ -1,4 +1,5 @@
 from Utils import *
+from Predicate import *
 from SQLTokenizer import *
 from TableManager import Column, loadTable
 from enum import Enum, StrEnum, auto
@@ -7,18 +8,21 @@ class SQLParser:
     class Keyword(Enum):
         SELECT = auto()
         FROM   = auto()
+        WHERE  = auto()
 
     class UnexpectedEOIErr(CustomErr):
         MSG = "Unexpected end of input"
+        def __init__(self, expectedTokenType :Token.TokenType = None) -> None:
+            super().__init__(f"Expected {expectedTokenType if expectedTokenType else 'content'}")
 
     class TokenTypeErr(CustomErr):
         MSG = "Unexpected token"
-        def __init__(self, expectedTokenType = Token.TokenType, actualToken = Token) -> None:
+        def __init__(self, expectedTokenType:Token.TokenType, actualToken:Token) -> None:
             super().__init__(f"Expected {expectedTokenType} but got {actualToken.type}({actualToken.value}) instead")
 
     def __init__(self) -> None:
         self.reset()
-        self.tokenizer = SQLTokenizer([kw.name for kw in self.Keyword])
+        self.tokenizer = SQLTokenizer(self.Keyword)
         
     def reset(self):
         self.cursor :int         = 0
@@ -41,6 +45,10 @@ class SQLParser:
         if (table := self.parseFromClause()).isErr(): return table
         self.parsedQuery["table"] = table.unwrap()
 
+        # The third line must be a WHERE clause or nothing:
+        if (wherePred := self.parseWhereClause()).isErr(): return wherePred
+        self.parsedQuery["where"] = wherePred.unwrap()
+
         # There can be an optional ";" at the end:
         if (queryEnd := self.getNextToken(Token.TokenType.END, mustExist = False)).isErr(): return queryEnd
 
@@ -54,8 +62,8 @@ class SQLParser:
         # "SELECT"
         if (selectKw := self.getNextToken(Token.TokenType.KEYWORD)).isErr(): return selectKw
         selectKw = selectKw.unwrap()
-        if selectKw.value != "SELECT":
-            return Res.Err(Exception(f"A query must begin with a SELECT clause, found \"{selectKw.value}\" instead"))
+        if selectKw.value != self.Keyword.SELECT.name:
+            return Res.Err(Exception(f"A query must begin with a {self.Keyword.SELECT.name} clause, found \"{selectKw.value}\" instead"))
 
         # Attr
         if (firstSelectedColumn := self.parseAttribute()).isErr(): return firstSelectedColumn
@@ -83,19 +91,48 @@ class SQLParser:
         # "FROM"
         if (fromKw := self.getNextToken(Token.TokenType.KEYWORD)).isErr(): return fromKw
         fromKw = fromKw.unwrap()
-        if fromKw.value != "FROM":
-            return Res.Err(Exception(f"A query must contain a FROM clause, found \"{fromKw.value}\" instead"))
+        if fromKw.value != self.Keyword.FROM.name:
+            return Res.Err(Exception(f"A query must contain a {self.Keyword.FROM.name} clause, found \"{fromKw.value}\" instead"))
         
         # Table
         return self.parseTable().map(lambda token : token.value)
 
-    def parseAttribute(self) -> Res[Token, UnexpectedEOIErr|TokenTypeErr]:
+    def parseWhereClause(self) -> Res[Optional[Predicate], Exception]:
+        # WHERE
+        # Here if the next token is nothing or not a keyword it's no longer our responsibility:
+        if (whereKw := self.getNextToken(Token.TokenType.KEYWORD, isConsumed = False)).isErr(): return Res.Ok(None)
+        
+        self.cursor += 1
+        whereKw = whereKw.unwrap()
+        if whereKw.value != self.Keyword.WHERE.name:
+            return Res.Err(Exception(f"A query must contain a {self.Keyword.WHERE.name} clause after the {self.Keyword.FROM.name} clause, found \"{whereKw.value}\" instead"))
+
+        # Predicate : Attr CompareOp Value
+        # Attr
+        if (attr := self.parseAttribute(canBeAll = False)).isErr(): return attr
+
+        # CompareOp
+        if (op := self.parseCompareOp()).isErr(): return op
+
+        # Value
+        if (value := self.parseValue()).isErr(): return value
+
+        return Res.Ok(Predicate(attr.unwrap().value, op.unwrap(), value.unwrap()))
+
+    def parseValue(self) -> Res[int, UnexpectedEOIErr|TokenTypeErr]:
+        return self.getNextToken(Token.TokenType.INT).map(lambda token : int(token.value))
+    
+    def parseCompareOp(self) -> Res[CompareOp, UnexpectedEOIErr|TokenTypeErr]:
+        # "==" | "!=" | "<>" | "<" | ">" | ">=" | "<="
+        return self.getNextToken(Token.TokenType.COMPARE_OP).map(lambda token : CompareOp(token.value))
+
+    def parseAttribute(self, *, canBeAll = True) -> Res[Token, UnexpectedEOIErr|TokenTypeErr]:
         # "*" | IDENT
         if (attr := self.getNextToken()).isErr(): return attr
 
         attr = attr.unwrap()
         return Res.Ok(attr
-            ) if attr.type == Token.TokenType.IDENT or attr.type == Token.TokenType.ALL else Res.Err(
+            ) if attr.type == Token.TokenType.IDENT or (canBeAll and attr.type == Token.TokenType.ALL) else Res.Err(
             self.TokenTypeErr(Token.TokenType.IDENT, attr))
     
     def parseTable(self) -> Res[Token, UnexpectedEOIErr|TokenTypeErr]:
@@ -105,11 +142,11 @@ class SQLParser:
     def isStreamFinished(self) -> bool: return self.cursor >= len(self.tokens)
     
     #TODO: Someone really should implement Opt<T> in the Utils module...    
-    def getNextToken(self, ofType :Token.TokenType|None = None, *, isConsumed = True, mustExist = True) -> Res[
+    def getNextToken(self, ofType :Token.TokenType = None, *, isConsumed = True, mustExist = True) -> Res[
         Token|None, UnexpectedEOIErr|TokenTypeErr]:
 
         try: token = self.tokens[self.cursor]
-        except: return Res.Err(self.UnexpectedEOIErr()) if mustExist else Res.Ok(None)
+        except: return Res.Err(self.UnexpectedEOIErr(ofType)) if mustExist else Res.Ok(None)
         finally:
             if isConsumed: self.cursor += 1
         
