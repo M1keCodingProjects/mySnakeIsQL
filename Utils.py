@@ -1,5 +1,8 @@
 from typing import *
 
+def asPatternOpts(opts:list[str]) -> str:
+    return fr"({'|'.join(opts)})"
+
 def flatten[T](l:list[list[T]]) -> list[T]: return [ item for innerList in l for item in innerList ]
 
 def produceTableSepWithDivits(segmentSizes :list[int], divitCh = '┬', lineCh = '─') -> str:

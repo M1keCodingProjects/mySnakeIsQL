@@ -20,9 +20,16 @@ select *
 from Student;
 ```
 ### Select where:
-Select only some entries based on a simple predicate. So far, the program only supports a simple comparison predicate in the form `Attribute ComparisonOperator IntegerValue`:
+Select only some entries based on a simple predicate. So far, the program only supports a simple comparison predicate in the form `Attribute ComparisonOperator Value`:
 ```SQL
 select Name
 from Student
 where SId < 3;
+```
+
+String literal values are also accepted:
+```SQL
+select Name
+from Student
+where Name = "John Doe";
 ```

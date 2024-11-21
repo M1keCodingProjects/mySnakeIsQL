@@ -29,16 +29,16 @@ class CompareOp(StrEnum):
             case CompareOp.LESS:
                 return lhs  < rhs
 
-class Predicate:
-    def __init__(self, attrName:str, op:CompareOp, value:int) -> None:
+class Predicate[T]:
+    def __init__(self, attrName:str, op:CompareOp, value:T) -> None:
         self.attrName, self.op, self.value = attrName, op, value
     
-    def isSatisfied(self, attrValueInTable:int) -> bool:
+    def isSatisfied(self, attrValueInTable:T) -> bool:
         return self.op.exec(attrValueInTable, self.value)
 
 def main() -> None:
     print(CompareOp("=").name)
-    print(Predicate("", CompareOp.GREATER, 3).isSatisfied(2))
+    print(Predicate("", CompareOp.GREATER, "2").isSatisfied("3"))
     print(Predicate("", CompareOp.GREATER, 3).isSatisfied(5))
 
 if __name__ == "__main__": main()

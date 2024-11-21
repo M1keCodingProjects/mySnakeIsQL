@@ -19,7 +19,7 @@ class SQLInterpreter:
         runRes :Res[Table, Exception] = Res.wrap(
             lambda tableName : self.tables[tableName],
             self.parser.parsedQuery["table"]
-        ).flatMap(lambda table: table.where(self.parser.parsedQuery["where"]) if self.parser.parsedQuery["where"] else table
+        ).flatMap(lambda table : table.where(self.parser.parsedQuery["where"]) if self.parser.parsedQuery["where"] else table
         ).flatMap(lambda table : table.select(self.parser.parsedQuery["selectedColumns"]))
         
         if runRes.isErr(): return runRes

@@ -17,8 +17,10 @@ class SQLParser:
 
     class TokenTypeErr(CustomErr):
         MSG = "Unexpected token"
-        def __init__(self, expectedTokenType:Token.TokenType, actualToken:Token) -> None:
-            super().__init__(f"Expected {expectedTokenType} but got {actualToken.type}({actualToken.value}) instead")
+        def __init__(self, expectedTokenType:Token.TokenType|list[Token.TokenType], actualToken:Token) -> None:
+            super().__init__(f"Expected {
+                ' or '.join(expectedTokenType) if isinstance(expectedTokenType, list) else expectedTokenType
+            } but got {actualToken.type}({actualToken.value}) instead")
 
     def __init__(self) -> None:
         self.reset()
@@ -119,8 +121,9 @@ class SQLParser:
 
         return Res.Ok(Predicate(attr.unwrap().value, op.unwrap(), value.unwrap()))
 
-    def parseValue(self) -> Res[int, UnexpectedEOIErr|TokenTypeErr]:
-        return self.getNextToken(Token.TokenType.INT).map(lambda token : int(token.value))
+    def parseValue(self) -> Res[int|str, UnexpectedEOIErr|TokenTypeErr]:
+        return self.getNextToken([Token.TokenType.INT, Token.TokenType.STR]).map(
+            lambda token : int(token.value) if token.type == Token.TokenType.INT else token.value[1:-1])
     
     def parseCompareOp(self) -> Res[CompareOp, UnexpectedEOIErr|TokenTypeErr]:
         # "==" | "!=" | "<>" | "<" | ">" | ">=" | "<="
@@ -128,12 +131,9 @@ class SQLParser:
 
     def parseAttribute(self, *, canBeAll = True) -> Res[Token, UnexpectedEOIErr|TokenTypeErr]:
         # "*" | IDENT
-        if (attr := self.getNextToken()).isErr(): return attr
-
-        attr = attr.unwrap()
-        return Res.Ok(attr
-            ) if attr.type == Token.TokenType.IDENT or (canBeAll and attr.type == Token.TokenType.ALL) else Res.Err(
-            self.TokenTypeErr(Token.TokenType.IDENT, attr))
+        acceptedTokenTypes = [Token.TokenType.IDENT]
+        if canBeAll: acceptedTokenTypes.append(Token.TokenType.ALL)
+        return self.getNextToken(acceptedTokenTypes)
     
     def parseTable(self) -> Res[Token, UnexpectedEOIErr|TokenTypeErr]:
         # IDENT
@@ -142,15 +142,16 @@ class SQLParser:
     def isStreamFinished(self) -> bool: return self.cursor >= len(self.tokens)
     
     #TODO: Someone really should implement Opt<T> in the Utils module...    
-    def getNextToken(self, ofType :Token.TokenType = None, *, isConsumed = True, mustExist = True) -> Res[
-        Token|None, UnexpectedEOIErr|TokenTypeErr]:
-
+    def getNextToken(self, ofType :Token.TokenType|list[Token.TokenType] = None, *, isConsumed = True, mustExist = True) -> Res[Token|None, UnexpectedEOIErr|TokenTypeErr]:
         try: token = self.tokens[self.cursor]
         except: return Res.Err(self.UnexpectedEOIErr(ofType)) if mustExist else Res.Ok(None)
         finally:
             if isConsumed: self.cursor += 1
         
-        return Res.Ok(token) if not ofType or ofType == token.type else Res.Err(self.TokenTypeErr(ofType, token))
+        match ofType:
+            case None:             return Res.Ok(token)
+            case [*acceptedTypes]: return Res.Ok(token) if token.type in acceptedTypes else Res.Err(self.TokenTypeErr(ofType, token))
+            case acceptedType:     return Res.Ok(token) if token.type == acceptedType  else Res.Err(self.TokenTypeErr(ofType, token))
 
     def tokenize(self, programText:str) -> Res[None, Exception]:
         if (tokenizationRes := self.tokenizer.tokenize(programText)).isErr(): return tokenizationRes

@@ -1,6 +1,6 @@
 import re
 from enum  import Enum, StrEnum
-from Utils import Res
+from Utils import Res, asPatternOpts
 from Predicate import CompareOp
 
 class Token:
@@ -13,6 +13,7 @@ class Token:
         ALL        = "*"
         COMPARE_OP = "comparison operator"
         INT        = "integer"
+        STR        = "string"
         IDENT      = "identifier"
 
         def __repr__(self) -> str:
@@ -32,8 +33,9 @@ class SQLTokenizer:
             (r";",                         Token.TokenType.END),
             (r"\*",                        Token.TokenType.ALL),
             (r"-?\d+",                     Token.TokenType.INT),
-            (fr"({'|'.join(compareOps)})", Token.TokenType.COMPARE_OP), #TODO: write utility to generalize this
-            (fr"({'|'.join(keywords)})",   Token.TokenType.KEYWORD),
+            (r"(\"|\').*?\1",              Token.TokenType.STR),
+            (asPatternOpts(compareOps),    Token.TokenType.COMPARE_OP),
+            (asPatternOpts(keywords),      Token.TokenType.KEYWORD),
             (r"[a-zA-Z_]\w*",              Token.TokenType.IDENT),
         )))
 

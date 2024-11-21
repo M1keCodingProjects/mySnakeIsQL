@@ -54,7 +54,7 @@ class StringDomain(SQLDomain[str]):
         return isinstance(value, str) and len(value) < self.maxLen
     
     def parseValue(self, valueStr:str) -> Res[str, Exception]:
-        return Res.Ok(valueStr)
+        return Res.Ok(valueStr.upper())
     
     def __repr__(self) -> str:
         return super().__repr__() + f"({self.maxLen})"
@@ -158,10 +158,14 @@ class Table:
         return Res.Ok(Table(newSchema, newInstance))
 
     def where(self, pred:Predicate = None) -> Res[Self, Exception]:
+        column = self.schema[pred.attrName]
+        if not column.domain.canValidate(pred.value):
+            return Res.Err(Exception(f"Invalid predicate comparing attribute \"{pred.attrName}\" of type {column.domain} with value \"{pred.value}\" of type {type(pred.value)}."))
+
         newInstance = []
         for rowId in range(self._entriesAmt):
             cellY = rowId * self._columnsAmt
-            if pred.isSatisfied(self.instance[self.schema[pred.attrName].id + cellY]):
+            if pred.isSatisfied(self.instance[column.id + cellY]):
                 newInstance.extend(self.instance[cellY:cellY + self._columnsAmt])
 
         return Res.Ok(Table(self.getSchemaCopy(), newInstance))
@@ -203,6 +207,6 @@ def loadTable(name:str) -> Res[Table, Exception]:
     return Res.Ok(table)
 
 def main() -> None:
-    print(loadTable("Student").unwrap().where(Predicate("SID", CompareOp.LESS, 10)).unwrap().select(["*"]).unwrap())
+    print(loadTable("Student").unwrap().where(Predicate("NAME", CompareOp.EQUALS, "John Doe")).unwrap().select(["NAME"]).unwrap())
 
 if __name__ == '__main__': main()
