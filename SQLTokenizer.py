@@ -1,6 +1,6 @@
 import re
-from enum  import Enum, StrEnum
-from Utils import Res, asPatternOpts
+from enum      import StrEnum
+from Utils     import Res, asPatternOpts
 from Predicate import CompareOp
 
 class Token:
@@ -23,20 +23,25 @@ class Token:
         self.type, self.value = type, value
 
 class SQLTokenizer:
-    def __init__(self, keywords:Enum) -> None:
-        keywords   = [kw.name for kw in keywords]
+    class Keyword(StrEnum):
+        SELECT = "SELECT"
+        FROM   = "FROM"
+        WHERE  = "WHERE"
+    
+    def __init__(self) -> None:
+        keywords   = [kw.name  for kw in SQLTokenizer.Keyword]
         compareOps = [op.value for op in CompareOp]
 
         self.rules = tuple(map(lambda rule : (re.compile('^' + rule[0]), rule[1]), (
-            (r"\s+",                       Token.TokenType.IGNORED),
-            (r",",                         Token.TokenType.COMMA),
-            (r";",                         Token.TokenType.END),
-            (r"\*",                        Token.TokenType.ALL),
-            (r"-?\d+",                     Token.TokenType.INT),
-            (r"(\"|\').*?\1",              Token.TokenType.STR),
-            (asPatternOpts(compareOps),    Token.TokenType.COMPARE_OP),
-            (asPatternOpts(keywords),      Token.TokenType.KEYWORD),
-            (r"[a-zA-Z_]\w*",              Token.TokenType.IDENT),
+            (r"\s+",                    Token.TokenType.IGNORED),
+            (r",",                      Token.TokenType.COMMA),
+            (r";",                      Token.TokenType.END),
+            (r"\*",                     Token.TokenType.ALL),
+            (r"-?\d+",                  Token.TokenType.INT),
+            (r"(\"|\').*?\1",           Token.TokenType.STR),
+            (asPatternOpts(compareOps), Token.TokenType.COMPARE_OP),
+            (asPatternOpts(keywords),   Token.TokenType.KEYWORD),
+            (r"[a-zA-Z_]\w*",           Token.TokenType.IDENT),
         )))
 
     def tokenize(self, text:str) -> Res[list[Token], Exception]:

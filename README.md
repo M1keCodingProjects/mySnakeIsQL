@@ -3,7 +3,7 @@ Eventually someone will write a good description here..
 
 ## How to run a Query
 - Run the `SQLInterpreter.py` file
-- Type your query, even using multiple lines, and make sure it ends with a semicolon(`;`):
+- Type your query, even using multiple lines, and make sure it ends with a semicolon:
   
   ```SQL
   select SId, Name
@@ -11,7 +11,6 @@ Eventually someone will write a good description here..
   ```
 - Press `Enter` to run the query
 - Once a query is done, if successful, you will be prompted to write another one: if you wish to **quit** the program instead, write `exit`
-- For now, any kind of **error** in the process fully halts the program.
 
 ## Examples:
 ### Select all the columns:

@@ -1,35 +1,36 @@
-from Utils import *
-from Predicate import *
+from Utils        import CustomErr, formatIntoDetails
+from typing       import *
+from SQLQuery     import Query
+from Predicate    import *
 from SQLTokenizer import *
-from TableManager import Column, loadTable
-from enum import Enum, StrEnum, auto
 
 class SQLParser:
-    class Keyword(Enum):
-        SELECT = auto()
-        FROM   = auto()
-        WHERE  = auto()
-
     class UnexpectedEOIErr(CustomErr):
         MSG = "Unexpected end of input"
         def __init__(self, expectedTokenType :Token.TokenType = None) -> None:
-            super().__init__(f"Expected {expectedTokenType if expectedTokenType else 'content'}")
+            super().__init__(f"expected {expectedTokenType if expectedTokenType else 'content'}")
 
     class TokenTypeErr(CustomErr):
         MSG = "Unexpected token"
         def __init__(self, expectedTokenType:Token.TokenType|list[Token.TokenType], actualToken:Token) -> None:
-            super().__init__(f"Expected {
+            super().__init__(f"expected {
                 ' or '.join(expectedTokenType) if isinstance(expectedTokenType, list) else expectedTokenType
             } but got {actualToken.type}({actualToken.value}) instead")
 
+    class KeywordErr(CustomErr):
+        MSG = "Unexpected keyword in context"
+        def __init__(self, expectedKeyword:SQLTokenizer.Keyword, actualKeyword:SQLTokenizer.Keyword, detailsMsg = "") -> None:
+            super().__init__(f"expected {expectedKeyword.name} clause{
+                formatIntoDetails(detailsMsg, "")} but got keyword \"{actualKeyword.name}\" instead")
+
     def __init__(self) -> None:
         self.reset()
-        self.tokenizer = SQLTokenizer(self.Keyword)
+        self.tokenizer = SQLTokenizer()
         
     def reset(self):
         self.cursor :int         = 0
-        self.tokens :List[Token] = []
-        self.parsedQuery         = {}
+        self.tokens :list[Token] = []
+        self.parsedQuery         = Query()
 
     def parse(self, programText:str) -> Res[None, Exception]:
         print("Parsing query..")
@@ -37,19 +38,17 @@ class SQLParser:
 
         if (tokenizationRes := self.tokenize(programText)).isErr(): return tokenizationRes
         
-        #TODO: possibly a decent intermediate representation for parsing..
-
         # The first line must be a SELECT clause:
         if (selectedColumns := self.parseSelectClause()).isErr(): return selectedColumns
-        self.parsedQuery["selectedColumns"] = selectedColumns.unwrap()
+        self.parsedQuery.setSelectedColumnNames(*selectedColumns.unwrap())
 
         # The second line must be a FROM clause:
         if (table := self.parseFromClause()).isErr(): return table
-        self.parsedQuery["table"] = table.unwrap()
+        self.parsedQuery.setTableName(table.unwrap())
 
         # The third line must be a WHERE clause or nothing:
         if (wherePred := self.parseWhereClause()).isErr(): return wherePred
-        self.parsedQuery["where"] = wherePred.unwrap()
+        if wherePred  := wherePred.unwrap(): self.parsedQuery.setWherePredicate(wherePred)
 
         # There can be an optional ";" at the end:
         if (queryEnd := self.getNextToken(Token.TokenType.END, mustExist = False)).isErr(): return queryEnd
@@ -60,16 +59,14 @@ class SQLParser:
         print("Query parsed successfully.")
         return Res.Ok(None)
     
-    def parseSelectClause(self) -> Res[list[Column.ColumnName], Exception]:
+    def parseSelectClause(self) -> Res[list[str], Exception]:
         # "SELECT"
-        if (selectKw := self.getNextToken(Token.TokenType.KEYWORD)).isErr(): return selectKw
-        selectKw = selectKw.unwrap()
-        if selectKw.value != self.Keyword.SELECT.name:
-            return Res.Err(Exception(f"A query must begin with a {self.Keyword.SELECT.name} clause, found \"{selectKw.value}\" instead"))
+        if (selectKw := self.getKeyword(SQLTokenizer.Keyword.SELECT, "at the start of query")).isErr():
+            return selectKw
 
         # Attr
         if (firstSelectedColumn := self.parseAttribute()).isErr(): return firstSelectedColumn
-        selectedColumns :list[Column.ColumnName] = [firstSelectedColumn.unwrap().value]
+        selectedColumns = [firstSelectedColumn.unwrap().value]
 
         # ("," Attr)*
         # Here it's not the SELECT clause's responsability to demand that something must exist after the first
@@ -88,13 +85,10 @@ class SQLParser:
             Exception("Cannot select all (*) and also other attributes."
         )) if len(selectedColumns) > 1 and (selectedColumns[-1] == Token.TokenType.ALL) else Res.Ok(selectedColumns)
     
-    def parseFromClause(self) -> Res[str, Exception]:
-        #TODO: avoid repetition: make a method to search for a specific keyword
+    def parseFromClause(self) -> Res[str, KeywordErr|UnexpectedEOIErr|TokenTypeErr]:
         # "FROM"
-        if (fromKw := self.getNextToken(Token.TokenType.KEYWORD)).isErr(): return fromKw
-        fromKw = fromKw.unwrap()
-        if fromKw.value != self.Keyword.FROM.name:
-            return Res.Err(Exception(f"A query must contain a {self.Keyword.FROM.name} clause, found \"{fromKw.value}\" instead"))
+        if (fromKw := self.getKeyword(SQLTokenizer.Keyword.FROM, "after SELECT clause")).isErr():
+            return fromKw
         
         # Table
         return self.parseTable().map(lambda token : token.value)
@@ -102,12 +96,8 @@ class SQLParser:
     def parseWhereClause(self) -> Res[Optional[Predicate], Exception]:
         # WHERE
         # Here if the next token is nothing or not a keyword it's no longer our responsibility:
-        if (whereKw := self.getNextToken(Token.TokenType.KEYWORD, isConsumed = False)).isErr(): return Res.Ok(None)
-        
-        self.cursor += 1
-        whereKw = whereKw.unwrap()
-        if whereKw.value != self.Keyword.WHERE.name:
-            return Res.Err(Exception(f"A query must contain a {self.Keyword.WHERE.name} clause after the {self.Keyword.FROM.name} clause, found \"{whereKw.value}\" instead"))
+        if (whereKw := self.getKeyword(SQLTokenizer.Keyword.WHERE, "after FROM clause", isOpt = True)).isErr():
+            return whereKw if isinstance(whereKw, self.KeywordErr) else Res.Ok(None)
 
         # Predicate : Attr CompareOp Value
         # Attr
@@ -139,14 +129,24 @@ class SQLParser:
         # IDENT
         return self.getNextToken(Token.TokenType.IDENT)
 
+    def getKeyword(self, expKeyword:SQLTokenizer.Keyword, detailsErrMsg = "", *, isOpt = False) -> Res[None, KeywordErr|UnexpectedEOIErr|TokenTypeErr]:
+        if (keyword := self.getNextToken(Token.TokenType.KEYWORD, isConsumed = not isOpt)).isErr(): return keyword
+        
+        if isOpt: self.advance()
+        keyword = SQLTokenizer.Keyword(keyword.unwrap().value)
+        return Res.Ok(None) if keyword == expKeyword else Res.Err(self.KeywordErr(expKeyword, keyword, detailsErrMsg))
+
     def isStreamFinished(self) -> bool: return self.cursor >= len(self.tokens)
     
+    def advance(self, amount = 1) -> None:
+        self.cursor += amount
+
     #TODO: Someone really should implement Opt<T> in the Utils module...    
     def getNextToken(self, ofType :Token.TokenType|list[Token.TokenType] = None, *, isConsumed = True, mustExist = True) -> Res[Token|None, UnexpectedEOIErr|TokenTypeErr]:
         try: token = self.tokens[self.cursor]
         except: return Res.Err(self.UnexpectedEOIErr(ofType)) if mustExist else Res.Ok(None)
         finally:
-            if isConsumed: self.cursor += 1
+            if isConsumed: self.advance()
         
         match ofType:
             case None:             return Res.Ok(token)
@@ -158,3 +158,8 @@ class SQLParser:
         
         self.tokens = tokenizationRes.unwrap()
         return Res.Ok(None)
+
+def main() -> None:
+    pass
+
+if __name__ == "__main__": main()
