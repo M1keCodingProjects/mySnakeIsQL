@@ -11,11 +11,12 @@ Query : Select From Where? ";"?
 Select : "SELECT" AttrList
 AttrList : Attr ("," Attr)*
 Attr :: "*" | IDENT
-From : "FROM" Table
+From : "FROM" Table (("," Table) | Join)*
 Table :: IDENT
+Join : "INNER"? "JOIN" Table "ON" Predicate
 Where : "WHERE" Predicate
 Predicate : (Attr CompareOp Value) | BetweenExpr
 CompareOp : "==" | "!=" | "<>" | "<" | ">" | ">=" | "<="
 Value : Literal
-Literal :: INT_LITERAL | STR_LITERAL
+Literal :: INT_LITERAL | STR_LITERAL | DATE_LITERAL
 BetweenExpr : "BETWEEN" Value "AND" Value

@@ -9,18 +9,31 @@ class TableManager:
     
     def create(*tablesToLoad:str) -> Res[Self, Exception]:
         """ Static """
-        return Res.toOverallDict({ name.upper() : loadTable(name) for name in tablesToLoad }).map(TableManager)
+        return Res.toOverallDict({ name.lower() : loadTable(name) for name in tablesToLoad }).map(TableManager)
 
-class SubfolderAccessErr(CustomErr, OSError):
+    def getTable(self, name:str) -> Res[Table, Exception]:
+        return Res.wrap(lambda : self.loadedTables[name.lower()]
+        ).mapErr(lambda _ : Exception(f"Table \"{name}\" either isn't in the database or hasn't been loaded."))
+
+    def getTables(self, names:list[str]) -> Res[list[Table], Exception]:
+        return Res.toOverallList(map(self.getTable, names))
+
+class SubfolderAccessErr(CustomErr):
     MSG = "Table access paths must always be plain file names and cannot contain the \"/\" character"
-    def __init__(self, path:str):
+    def __init__(self, path:str) -> None:
         super().__init__(f"provided path:\"{path}\"")
 
-def retrieveRawTableFromLoc(filename:str) -> Res[str, OSError]:
+class UnknownTableErr(CustomErr):
+    MSG = "Unknown table"
+    def __init__(self, tableName:str) -> None:
+        super().__init__(f"Couldn't recognize \"{tableName}\" as one of the available tables in the database")
+
+def retrieveRawTableFromLoc(filename:str) -> Res[str, SubfolderAccessErr|UnknownTableErr]:
     # Prevent subfolder access:
     if '/' in filename: return Res.Err(SubfolderAccessErr(filename))
 
-    with open(f"./Tables/{filename}.csv") as fd: return Res.wrap(fd.read)
+    with open(f"./Tables/{filename}.csv") as fd:
+        return Res.wrap(fd.read).mapErr(lambda e : UnknownTableErr(filename))
 
 def loadTable(name:str) -> Res[Table, Exception]:
     if (tableRows := retrieveRawTableFromLoc(name)).isErr(): return tableRows
@@ -33,8 +46,8 @@ def loadTable(name:str) -> Res[Table, Exception]:
 
     schema = Schema()
     for columnName, domainStr in zip(columnNames, typeMetadata):
-        if (domain := parseDomain(domainStr)).isErr(): return domain
-        schema.addColumn(columnName, domain.unwrap())
+        if (domain := parseDomain(columnName, domainStr)).isErr(): return domain
+        schema.addColumn(domain.unwrap())
     
     instance = []
     for entry in tableRows[2:]:
@@ -46,4 +59,9 @@ def loadTable(name:str) -> Res[Table, Exception]:
             if (value := domain.parseValue(valueStr)).isErr(): return value
             instance.append(value.unwrap())
     
-    return Res.Ok(Table(schema, instance))
+    return Res.Ok(Table(name, schema, instance))
+
+def main() -> None:
+    print(TableManager.create("Student").unwrap().loadedTables["student"].name)
+
+if __name__ == "__main__": main()

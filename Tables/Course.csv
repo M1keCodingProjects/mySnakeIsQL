@@ -1,0 +1,8 @@
+CId,Name,Credits,ProfessorName
+integer,varchar(40),integer,varchar(40)
+0,Criminology,13,Boss E.T. no-cent
+1,Ancient burial planning,8,Conan Teest
+2,The platypus: an invasive species,2,Heinz Doofenshmirtz
+3,One billion dollars mistakes,6,NULL
+4,Databases 2: the SQL,8,Sir. Verless
+5,The basics of replacement,10,Barbara Liskov

@@ -20,12 +20,29 @@ class Schema:
     def __init__(self) -> None:
         self.__columns :dict[str, tuple[int, SQLDomain]] = {}
 
+    def merge(left:Self, right:Self, *, duplicatesAreIgnored = False) -> Res[Self, "Schema.ColumnNameCollisionErr"]:
+        """Static"""
+        mergedSchema = left.copy()
+        for _, domain in right.iterIdsAndDomains():
+            if (res := mergedSchema.addColumn(domain)).isErr() and not duplicatesAreIgnored: return res
+        
+        return Res.Ok(mergedSchema)
+
     def getColumnsAmount(self) -> int:
         return len(self.__columns)
 
-    def addColumn(self, columnName:str, domain:SQLDomain) -> Res[None, "Schema.ColumnNameCollisionErr"]:
-        columnName = columnName.upper()
-        if columnName in self.__columns: return Res.Err(Schema.ColumnNameCollisionErr(columnName))
+    def renameColumn(self, oldName:str, newName:str) -> Res[None, "Schema.ColumnNameCollisionErr|Schema.ColumnNameErr"]:
+        """Mutates self, expects correct (lower) case."""
+        if newName == oldName:            return Res.Ok(None)
+        if newName     in self.__columns: return Res.Err(Schema.ColumnNameCollisionErr(newName))
+        if oldName not in self.__columns: return Res.Err(Schema.ColumnNameErr(oldName))
+
+        self.__columns[newName] = self.__columns.pop(oldName)
+        return Res.Ok(None)
+
+    def addColumn(self, domain:SQLDomain) -> Res[None, "Schema.ColumnNameCollisionErr"]:
+        columnName = domain.name.lower()
+        if columnName in self.__columns: return Res.Err(Schema.ColumnNameCollisionErr(domain.name))
 
         self.__columns[columnName] = (self.getColumnsAmount(), domain)
         return Res.Ok()
@@ -39,8 +56,11 @@ class Schema:
     def iterColumns(self) -> ItemsView[str, tuple[int, SQLDomain]]:
         return self.__columns.items()
 
+    def getExactNames(self) -> list[str]:
+        return list(map(lambda IdAndDomain : IdAndDomain[1].name, self.__columns.values()))
+
     def getIdAndDomain(self, name:str) -> Res[tuple[int, SQLDomain], "Schema.ColumnNameErr"]:
-        return Res.wrap(lambda name : self.__columns[name], name).mapErr(lambda _ : Schema.ColumnNameErr(name))
+        return Res.wrap(lambda name : self.__columns[name], name.lower()).mapErr(lambda _ : Schema.ColumnNameErr(name))
         #^^^ here I could grab the name simply by passing the KeyError along directly but it looks too criptic imo.
 
     def __repr__(self) -> str:
@@ -53,15 +73,15 @@ class Schema:
 
 class Table:
     MIN_COLUMN_WIDTH = 10
-    def __init__(self, schema:Schema, instance :list = []) -> None:
-        self.schema, self.instance = schema, instance
+    def __init__(self, name:str, schema:Schema, instance :list = []) -> None:
+        self.name, self.schema, self.instance = name, schema, instance
 
         self._columnsAmt = self.schema.getColumnsAmount()
         self._entriesAmt = len(instance) // self._columnsAmt
         self.setGraphics()
 
     def setGraphics(self):
-        columnNames           = self.schema.iterNames()
+        columnNames           = self.schema.getExactNames()
         self._columnNamesLens = list(map(lambda name : max(len(name), self.MIN_COLUMN_WIDTH), columnNames))
         actualColumnSizes     = list(map(lambda l : l + 2, self._columnNamesLens))
         
@@ -69,6 +89,16 @@ class Table:
         self.entrySepLine  = '├' + produceTableSepWithDivits(actualColumnSizes, '┼') + "┤\n"
         self.bottomLine    = '└' + produceTableSepWithDivits(actualColumnSizes, '┴') + "┘\n"
         self.schemaDisplay = '┌' + produceTableSepWithDivits(actualColumnSizes, '┬') + "┐\n" + schemaLine + self.entrySepLine * (not ENTITY_SEP_IS_DISPLAYED)
+
+    def getCell(self, rowId:int, colId:int) -> Any:
+        return self.instance[rowId * self._columnsAmt + colId]
+
+    def getRow(self, rowId:int) -> list:
+        entryStartPos = rowId * self._columnsAmt
+        return self.instance[entryStartPos:entryStartPos + self._columnsAmt]
+
+    def getColumn(self, colId:int) -> list:
+        return self.instance[colId::self._columnsAmt]
 
     def select(self, columnNames:list[str]) -> Res[Self, Schema.ColumnNameErr|Schema.ColumnNameCollisionErr]:
         newSchema = Schema()
@@ -81,32 +111,44 @@ class Table:
             if (selectedColumn := self.schema.getIdAndDomain(columnName)).isErr(): return selectedColumn
             
             id, domain = selectedColumn.unwrap()
-            if (collisionRes := newSchema.addColumn(columnName, domain)).isErr(): return collisionRes
+            if (collisionRes := newSchema.addColumn(domain)).isErr(): return collisionRes
 
             selectedColumnsIds.append(id)
 
         newInstance = []
         for rowId in range(self._entriesAmt):
-            cellY = rowId * self._columnsAmt
             for columnId in selectedColumnsIds:
-                newInstance.append(self.instance[columnId + cellY])
+                newInstance.append(self.getCell(rowId, columnId))
 
-        return Res.Ok(Table(newSchema, newInstance))
+        return Res.Ok(Table("", newSchema, newInstance))
+
+    def join(self, table:Self, pred:Optional[Predicate]) -> Res[Self, Schema.ColumnNameCollisionErr]:
+        """ Will perform the cartesian product if pred is None """
+        if (schema := Schema.merge( #TODO: solve collisions
+            self.schema.copy(),
+            table.schema.copy())).isErr(): return schema
+        
+        instance = []
+        for rowIdL in range(self._entriesAmt):
+            leftRow = self.getRow(rowIdL)
+            for rowIdR in range(table._entriesAmt):
+                instance.extend(leftRow + table.getRow(rowIdR))
+        
+        return Res.Ok(Table("", schema.unwrap(), instance))
 
     def where(self, pred:Predicate) -> Res[Self, Schema.ColumnNameErr|SQLDomain.DomainValueErr]:
         if (column := self.schema.getIdAndDomain(pred.attrName)).isErr(): return column
 
-        id, domain = column.unwrap()
+        colId, domain = column.unwrap()
         if not domain.canValidate(pred.value):
-            return Res.Err(SQLDomain.DomainValueErr(domain, pred.value, f"invalid predicate comparing attribute \"{pred.attrName}\" of type {domain} with value \"{pred.value}\" of type {type(pred.value)}"))
+            return Res.Err(SQLDomain.DomainValueErr(domain, pred.value, f"invalid predicate comparing attribute \"{pred.attrName}\" of type {domain.TYPE} with value \"{pred.value}\" of type {type(pred.value)}"))
 
         newInstance = []
         for rowId in range(self._entriesAmt):
-            cellY = rowId * self._columnsAmt
-            if pred.isSatisfied(self.instance[id + cellY]):
-                newInstance.extend(self.instance[cellY:cellY + self._columnsAmt])
+            if pred.isSatisfied(domain, self.getCell(rowId, colId)):
+                newInstance.extend(self.getRow(rowId))
 
-        return Res.Ok(Table(self.schema.copy(), newInstance))
+        return Res.Ok(Table("", self.schema.copy(), newInstance))
 
     def __repr__(self) -> str:
         tableStr = self.schemaDisplay
@@ -122,11 +164,30 @@ class Table:
             tableStr += "│\n"
 
         return tableStr + self.bottomLine
-    
+
     def copy(self) -> str:
-        return Table(self.schema.copy(), self.instance.copy())
+        return Table(self.name, self.schema.copy(), self.instance.copy())
 
 def main() -> None:
-    pass
+    schema = Schema()
+    schema.addColumn(IntegerDomain("SId"))
+    schema.addColumn(StringDomain("Name", 40))
+
+    students = Table("Student", schema, [
+        0, "John Doe",
+        1, "Alice Bob",
+    ])
+
+    schema = Schema()
+    schema.addColumn(IntegerDomain("CId"))
+    schema.addColumn(StringDomain("CName", 40))
+
+    courses = Table("Course", schema, [
+        0, "Course 1",
+        1, "Course 2",
+        2, "Course 3",
+    ])
+
+    print(students.join(courses, None).unwrap())
 
 if __name__ == '__main__': main()

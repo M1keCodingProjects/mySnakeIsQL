@@ -1,4 +1,5 @@
-from enum import StrEnum
+from enum      import StrEnum
+from SQLDomain import SQLDomain
 
 class CompareOp(StrEnum):
     EQUALS         = "="
@@ -9,21 +10,21 @@ class CompareOp(StrEnum):
     GREATER        = ">"
     LESS           = "<"
 
-    def exec[T](self, lhs:T, rhs:T) -> bool:
+    def exec[T](self, domain:SQLDomain, lhs:T, rhs:T) -> bool:
         match self:
-            case CompareOp.EQUALS:                           return lhs == rhs        
-            case CompareOp.NOT_EQUALS | CompareOp.DIFFERENT: return lhs != rhs  
-            case CompareOp.GREATER_EQUALS:                   return lhs >= rhs
-            case CompareOp.LESS_EQUALS:                      return lhs <= rhs
-            case CompareOp.GREATER:                          return lhs  > rhs
-            case CompareOp.LESS:                             return lhs  < rhs
+            case CompareOp.EQUALS:                           return domain.compareEqs(lhs, rhs)
+            case CompareOp.NOT_EQUALS | CompareOp.DIFFERENT: return domain.compareNeq(lhs, rhs)
+            case CompareOp.GREATER_EQUALS:                   return domain.compareGre(lhs, rhs)
+            case CompareOp.LESS_EQUALS:                      return domain.compareLse(lhs, rhs)
+            case CompareOp.GREATER:                          return domain.compareGrt(lhs, rhs)
+            case CompareOp.LESS:                             return domain.compareLst(lhs, rhs)
 
 class Predicate[T]:
     def __init__(self, attrName:str, op:CompareOp, value:T) -> None:
         self.attrName, self.op, self.value = attrName, op, value
     
-    def isSatisfied(self, attrValueInTable:T) -> bool:
-        return self.op.exec(attrValueInTable, self.value)
+    def isSatisfied(self, domain:SQLDomain, attrValueInTable:T) -> bool:
+        return self.op.exec(domain, attrValueInTable, self.value)
 
 def main() -> None:
     pass

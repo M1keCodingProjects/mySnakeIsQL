@@ -14,6 +14,7 @@ class Token:
         COMPARE_OP = "comparison operator"
         INT        = "integer"
         STR        = "string"
+        DATE       = "date"
         IDENT      = "identifier"
 
         def __repr__(self) -> str:
@@ -32,11 +33,12 @@ class SQLTokenizer:
         keywords   = [kw.name  for kw in SQLTokenizer.Keyword]
         compareOps = [op.value for op in CompareOp]
 
-        self.rules = tuple(map(lambda rule : (re.compile('^' + rule[0]), rule[1]), (
+        self.rules = tuple(map(lambda rule : (re.compile('^' + rule[0], re.IGNORECASE), rule[1]), (
             (r"\s+",                    Token.TokenType.IGNORED),
             (r",",                      Token.TokenType.COMMA),
             (r";",                      Token.TokenType.END),
             (r"\*",                     Token.TokenType.ALL),
+            (r"\d\d?\\\d\d?\\\d{4}",    Token.TokenType.DATE),
             (r"-?\d+",                  Token.TokenType.INT),
             (r"(\"|\').*?\1",           Token.TokenType.STR),
             (asPatternOpts(compareOps), Token.TokenType.COMPARE_OP),

@@ -1,6 +1,8 @@
+from datetime import datetime
 from Utils        import CustomErr, formatIntoDetails
 from typing       import *
 from SQLQuery     import Query
+from SQLDomain    import DateDomain
 from Predicate    import *
 from SQLTokenizer import *
 
@@ -40,11 +42,11 @@ class SQLParser:
         
         # The first line must be a SELECT clause:
         if (selectedColumns := self.parseSelectClause()).isErr(): return selectedColumns
-        self.parsedQuery.setSelectedColumnNames(*selectedColumns.unwrap())
+        self.parsedQuery.setColumnNames(*selectedColumns.unwrap())
 
         # The second line must be a FROM clause:
-        if (table := self.parseFromClause()).isErr(): return table
-        self.parsedQuery.setTableName(table.unwrap())
+        if (tables := self.parseFromClause()).isErr(): return tables
+        self.parsedQuery.setTableNames(*tables.unwrap())
 
         # The third line must be a WHERE clause or nothing:
         if (wherePred := self.parseWhereClause()).isErr(): return wherePred
@@ -76,7 +78,7 @@ class SQLParser:
             if(selectedColumns[-1] == Token.TokenType.ALL.value):
                 return Res.Err(Exception("Cannot select all (*) and also other attributes."))
 
-            self.getNextToken() # Now if it is there we must consume it.
+            self.advance() # Now if it is there we must consume it.
             if (selectedColumn := self.parseAttribute()).isErr(): return selectedColumn
             
             selectedColumns.append(selectedColumn.unwrap().value)
@@ -85,19 +87,30 @@ class SQLParser:
             Exception("Cannot select all (*) and also other attributes."
         )) if len(selectedColumns) > 1 and (selectedColumns[-1] == Token.TokenType.ALL) else Res.Ok(selectedColumns)
     
-    def parseFromClause(self) -> Res[str, KeywordErr|UnexpectedEOIErr|TokenTypeErr]:
+    def parseFromClause(self) -> Res[list[str], KeywordErr|UnexpectedEOIErr|TokenTypeErr]:
         # "FROM"
         if (fromKw := self.getKeyword(SQLTokenizer.Keyword.FROM, "after SELECT clause")).isErr():
             return fromKw
         
         # Table
-        return self.parseTable().map(lambda token : token.value)
+        if (firstTable := self.parseTable()).isErr(): return firstTable
+    
+        #TODO: add method to parse comma-separated lists
+        # ("," Table)*
+        tables = [firstTable.unwrap().value]
+        while self.getNextToken(Token.TokenType.COMMA, isConsumed = False).isOk():
+            self.advance()
+            if (table := self.parseTable()).isErr(): return table
+            
+            tables.append(table.unwrap().value)
+
+        return Res.Ok(tables)
 
     def parseWhereClause(self) -> Res[Optional[Predicate], Exception]:
         # WHERE
         # Here if the next token is nothing or not a keyword it's no longer our responsibility:
         if (whereKw := self.getKeyword(SQLTokenizer.Keyword.WHERE, "after FROM clause", isOpt = True)).isErr():
-            return whereKw if isinstance(whereKw, self.KeywordErr) else Res.Ok(None)
+            return whereKw if isinstance(whereKw.err, self.KeywordErr) else Res.Ok(None)
 
         # Predicate : Attr CompareOp Value
         # Attr
@@ -111,9 +124,21 @@ class SQLParser:
 
         return Res.Ok(Predicate(attr.unwrap().value, op.unwrap(), value.unwrap()))
 
-    def parseValue(self) -> Res[int|str, UnexpectedEOIErr|TokenTypeErr]:
-        return self.getNextToken([Token.TokenType.INT, Token.TokenType.STR]).map(
-            lambda token : int(token.value) if token.type == Token.TokenType.INT else token.value[1:-1])
+    def parseValue(self) -> Res[int|str, UnexpectedEOIErr|TokenTypeErr|ValueError]:
+        if (token := self.getNextToken([Token.TokenType.INT, Token.TokenType.STR, Token.TokenType.DATE])).isErr():
+            return token
+        
+        # God I hate python.. anyways, "value" should never be Unbound here.
+        match (token := token.unwrap()).type:
+            case Token.TokenType.INT:  value = int(token.value)
+            case Token.TokenType.STR:  value = token.value[1:-1]  # vvv we flip because constructor wants y, m, d
+            case Token.TokenType.DATE:
+                if (date := Res.wrap(datetime, *map(int, token.value.split('\\')[::-1]))).isErr(): return date
+                value     = date.unwrap()
+            
+            case _: raise Exception("Should never happen")
+        
+        return Res.Ok(value)
     
     def parseCompareOp(self) -> Res[CompareOp, UnexpectedEOIErr|TokenTypeErr]:
         # "==" | "!=" | "<>" | "<" | ">" | ">=" | "<="
@@ -133,7 +158,7 @@ class SQLParser:
         if (keyword := self.getNextToken(Token.TokenType.KEYWORD, isConsumed = not isOpt)).isErr(): return keyword
         
         if isOpt: self.advance()
-        keyword = SQLTokenizer.Keyword(keyword.unwrap().value)
+        keyword = SQLTokenizer.Keyword(keyword.unwrap().value.upper())
         return Res.Ok(None) if keyword == expKeyword else Res.Err(self.KeywordErr(expKeyword, keyword, detailsErrMsg))
 
     def isStreamFinished(self) -> bool: return self.cursor >= len(self.tokens)

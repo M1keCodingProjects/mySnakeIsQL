@@ -1,11 +1,11 @@
-from SQLParser    import *
+from Utils        import compareCaseInsensitive
 from SQLTable     import Table
+from SQLParser    import *
 from TableManager import TableManager
 
 class SQLInterpreter:
-    def __init__(self, tables:dict[str, Table]) -> None:
-        self.parser = SQLParser()
-        self.tables = tables
+    def __init__(self, tableManager:TableManager) -> None:
+        self.parser, self.tableManager = SQLParser(), tableManager
     
     def parseAndRun(self, programText:str) -> Res[None, Exception]:
         if (parsingRes := self.parse(programText)).isErr(): return parsingRes
@@ -16,7 +16,7 @@ class SQLInterpreter:
     
     def run(self) -> Res[None, Exception]:
         print("Running query..")
-        if (runRes := self.parser.parsedQuery.run(self.tables)).isErr(): return runRes
+        if (runRes := self.parser.parsedQuery.run(self.tableManager)).isErr(): return runRes
         
         print(runRes.unwrap())
         return Res.Ok(None)
@@ -27,7 +27,8 @@ class UserInputCommand(StrEnum):
 
 def main():
     print("Welcome to my Snake is QL, a very bad SQL interpreter written in Python.")
-    interpreter = SQLInterpreter(TableManager.create("Student").unwrap().loadedTables)
+    tableManager = TableManager.create("Student", "Exam", "Course").unwrap()
+    interpreter  = SQLInterpreter(tableManager)
 
     while True:
         nextLine    = ""
@@ -37,19 +38,20 @@ def main():
             f"\nTo fully quit the program write \"{UserInputCommand.QuitProgram}\" and hit Enter again.\n")
         
         while True:
-            match nextLine := input("").upper().strip():
-                case UserInputCommand.QuitProgram: return
-                case "": continue
-                case _:
-                    programText += ' ' + nextLine
-                    if ';' not in nextLine: continue
-                    
-                    print("\nQuery registered..")
-                    queryStatus    = interpreter.parseAndRun(programText)
-                    queryHasFailed = queryStatus.isErr()
-                    print(f"Query status: {'un' * queryHasFailed}successful.")
-                    
-                    if queryHasFailed: print(queryStatus.err)
-                    print(); break
+            if not (nextLine := input("").strip()): continue
+            if compareCaseInsensitive(nextLine, UserInputCommand.QuitProgram):
+                print("User has quit the program.")
+                return
+            
+            programText += ' ' + nextLine
+            if ';' not in nextLine: continue
+            
+            print("\nQuery registered..")
+            queryStatus    = interpreter.parseAndRun(programText)
+            queryHasFailed = queryStatus.isErr()
+            print(f"Query status: {'un' * queryHasFailed}successful.")
+            
+            if queryHasFailed: print(queryStatus.err)
+            print(); break
 
 if __name__ == '__main__': main()
