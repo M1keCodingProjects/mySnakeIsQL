@@ -1,9 +1,9 @@
 from typing import *
 
 def compareCaseInsensitive(s1:str, s2:str) -> bool: return s1.lower() == s2.lower()
-
 def formatIntoDetails(details:str, sep = ',') -> str:  return f"{sep} {details}" * bool(details)
 def asPatternOpts(opts:list[str])  -> str:  return fr"({'|'.join(opts)})"
+
 def flatten[T](l:list[list[T]]) -> list[T]: return [ item for innerList in l for item in innerList ]
 
 def produceTableSepWithDivits(segmentSizes :list[int], divitCh, lineCh = '─') -> str:

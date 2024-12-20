@@ -1,5 +1,5 @@
 from typing   import *
-from datetime import *
+from datetime import datetime
 from Utils    import formatIntoDetails, CustomErr, BaseClassErr, Res
 
 class SQLDomain[T]:
@@ -12,7 +12,8 @@ class SQLDomain[T]:
 
     TYPE = "default"
     def __init__(self, name:str) -> None:
-        self.name = name
+        self.name       = name.lower()
+        self.actualName = name
 
     def canValidate(self, value:T) -> bool:
         raise SQLDomain.BCE("canValidate")
@@ -39,10 +40,10 @@ class SQLDomain[T]:
         return lhs < rhs
     
     def __repr__(self) -> str:
-        return f"{self.name} : {self.TYPE}"
+        return f"{self.actualName} : {self.TYPE}"
     
     def copy(self) -> Self:
-        return self.__class__(self.name)
+        return self.__class__(self.actualName)
         # This will panic if called on the base class, otherwise it provides a useful argless copy that can
         # be inherited directly by subclasses that don't hold any data.
 

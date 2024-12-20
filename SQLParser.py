@@ -1,9 +1,8 @@
-from datetime import datetime
+from datetime     import datetime
 from Utils        import CustomErr, formatIntoDetails
 from typing       import *
 from SQLQuery     import Query
-from SQLDomain    import DateDomain
-from Predicate    import *
+from Predicate    import Predicate
 from SQLTokenizer import *
 
 class SQLParser:

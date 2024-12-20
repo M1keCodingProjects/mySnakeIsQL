@@ -49,6 +49,8 @@ def loadTable(name:str) -> Res[Table, Exception]:
         if (domain := parseDomain(columnName, domainStr)).isErr(): return domain
         schema.addColumn(domain.unwrap())
     
+    #TODO: check for collisions in the schema domain names
+
     instance = []
     for entry in tableRows[2:]:
         entryValues = entry.split(',')

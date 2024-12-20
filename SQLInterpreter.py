@@ -1,6 +1,6 @@
-from Utils        import compareCaseInsensitive
-from SQLTable     import Table
-from SQLParser    import *
+from Utils        import compareCaseInsensitive, Res
+from enum         import StrEnum
+from SQLParser    import SQLParser
 from TableManager import TableManager
 
 class SQLInterpreter:
