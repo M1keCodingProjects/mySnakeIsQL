@@ -32,3 +32,19 @@ select Name
 from Student
 where Name = "John Doe";
 ```
+
+As well as date literals:
+```SQL
+select Name
+from Student
+where BirthDate < 11\09\2001;
+```
+
+### Cartesian product:
+Get all the possible combinations between the rows of 2 or more tables:
+```SQL
+select Date, Name
+from Exam, Course;
+```
+
+The program correctly halts when a column that is selected or mentioned in the where predicate is ambiguous, as a column with its name exists in more than one of the combined tables.
