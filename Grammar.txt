@@ -8,15 +8,23 @@ FinalRule :: combination of RegExp, Literals or DirectTokens
 * = 0 or more
 --------------------------------
 Query : Select From Where? ";"?
-Select : "SELECT" AttrList
-AttrList : Attr ("," Attr)*
-Attr :: "*" | IDENT
-From : "FROM" Table (("," Table) | Join)*
-Table :: IDENT
-Join : "INNER"? "JOIN" Table "ON" Predicate
-Where : "WHERE" Predicate
-Predicate : (Attr CompareOp Value) | BetweenExpr
-CompareOp : "==" | "!=" | "<>" | "<" | ">" | ">=" | "<="
-Value : Literal
-Literal :: INT_LITERAL | STR_LITERAL | DATE_LITERAL
-BetweenExpr : "BETWEEN" Value "AND" Value
+    Select : "SELECT" AttrList
+        AttrList : Attr ("," Attr)*
+            Attr :: "*" | IDENT
+
+    From : "FROM" Table (("," Table) | Join)*
+        Table :: IDENT
+        Join : ("OUTER"? ("LEFT" | "FULL" | "RIGHT") | "INNER"? "NATURAL")? "JOIN" Table "ON" Predicate
+
+    Where : "WHERE" Predicate
+        Predicate : ComparisonExpr (LogicalOp ComparisonExpr)* | "(" Predicate ")"
+            ComparisonExpr : MathExpr (CompareOp MathExpr)? | BetweenExpr
+                MathExpr : Operand | (MathExpr MathOp)* MathExpr
+                    Operand : Literal | Attr
+                    MathOp :: "+" | "-" | "*" | "/" | "%"
+                    Literal :: INT_LITERAL | STR_LITERAL | DATE_LITERAL
+                
+                CompareOp :: "==" | "!=" | "<>" | "<" | ">" | ">=" | "<="
+                BetweenExpr : "BETWEEN" MathExpr "AND" MathExpr
+            
+            LogicalOp :: "AND" | "OR"

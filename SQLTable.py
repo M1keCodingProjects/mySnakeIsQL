@@ -2,7 +2,6 @@ from Utils        import *
 from typing       import *
 from Predicate    import *
 from SQLSchema    import Schema
-from SQLTokenizer import Token
 
 ENTITY_SEP_IS_DISPLAYED = False
 
@@ -39,7 +38,7 @@ class Table:
         newSchema = Schema()
         selectedColumnsIds :list[int] = []
         for columnName in columnNames:
-            if columnName == Token.TokenType.ALL.value:
+            if columnName == MathOp.MUL.value:
                 newSchema          = self.schema.copy()
                 selectedColumnsIds = list(range(self._columnsAmt))
                 break
@@ -72,11 +71,11 @@ class Table:
         return Res.Ok(Table("", schema, instance))
 
     def where(self, pred:Predicate) -> Res[Self, Schema.ColumnNameErr|SQLDomain.DomainValueErr]:
-        if (column := self.schema.getIdAndDomain(pred.attrName)).isErr(): return column
+        if (column := self.schema.getIdAndDomain(pred.attr.name)).isErr(): return column
 
         colId, domain = column.unwrap()
         if not domain.canValidate(pred.value):
-            return Res.Err(SQLDomain.DomainValueErr(domain, pred.value, f"invalid predicate comparing attribute \"{pred.attrName}\" of type {domain.TYPE} with value \"{pred.value}\" of type {type(pred.value)}"))
+            return Res.Err(SQLDomain.DomainValueErr(domain, pred.value, f"invalid predicate comparing attribute \"{pred.attr.name}\" of type {domain.TYPE} with value \"{pred.value}\" of type {type(pred.value)}"))
 
         newInstance = []
         for rowId in range(self._entriesAmt):

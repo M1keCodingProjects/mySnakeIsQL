@@ -2,7 +2,7 @@ from datetime     import datetime
 from Utils        import CustomErr, formatIntoDetails
 from typing       import *
 from SQLQuery     import Query
-from Predicate    import Predicate
+from Predicate    import *
 from SQLTokenizer import *
 
 class SQLParser:
@@ -67,24 +67,25 @@ class SQLParser:
 
         # Attr
         if (firstSelectedColumn := self.parseAttribute()).isErr(): return firstSelectedColumn
-        selectedColumns = [firstSelectedColumn.unwrap().value]
+        selectedColumns = [firstSelectedColumn.unwrap().name]
+        #TODO: Here it might make sense to keep the whole attribute instances
 
         # ("," Attr)*
         # Here it's not the SELECT clause's responsability to demand that something must exist after the first
         # attribute, the reason why I don't set mustExist = False here is that the token is not consumed: we
         # are just checking wether there's a comma there. If not (nothing = not a comma) we are done with SELECT.
         while self.getNextToken(Token.TokenType.COMMA, isConsumed = False).isOk():
-            if(selectedColumns[-1] == Token.TokenType.ALL.value):
+            if(selectedColumns[-1] == MathOp.MUL.value):
                 return Res.Err(Exception("Cannot select all (*) and also other attributes."))
 
             self.advance() # Now if it is there we must consume it.
             if (selectedColumn := self.parseAttribute()).isErr(): return selectedColumn
             
-            selectedColumns.append(selectedColumn.unwrap().value)
+            selectedColumns.append(selectedColumn.unwrap().name)
 
         return Res.Err(
             Exception("Cannot select all (*) and also other attributes."
-        )) if len(selectedColumns) > 1 and (selectedColumns[-1] == Token.TokenType.ALL) else Res.Ok(selectedColumns)
+        )) if len(selectedColumns) > 1 and (selectedColumns[-1] == MathOp.MUL.value) else Res.Ok(selectedColumns)
     
     def parseFromClause(self) -> Res[list[str], KeywordErr|UnexpectedEOIErr|TokenTypeErr]:
         # "FROM"
@@ -121,9 +122,34 @@ class SQLParser:
         # Value
         if (value := self.parseValue()).isErr(): return value
 
-        return Res.Ok(Predicate(attr.unwrap().value, op.unwrap(), value.unwrap()))
+        return Res.Ok(Predicate(attr.unwrap(), op.unwrap(), value.unwrap()))
 
-    def parseValue(self) -> Res[int|str, UnexpectedEOIErr|TokenTypeErr|ValueError]:
+    def parseMathExpr(self) -> Res[MathExpr, Exception]:
+        # Operand | (MathExpr MathOp)* MathExpr
+        # Operand
+        if (firstOperand := self.parseOperand()).isErr(): return firstOperand
+
+        # (MathExpr MathOp)* MathExpr
+        mathExpr = MathExpr(firstOperand.unwrap())
+        while (operator := self.parseMathOp(isConsumed = False)).isOk():
+            mathExpr, tail = mathExpr.addOperation(operator.unwrap())
+            self.advance()
+
+            if (operand := self.parseOperand()).isErr(): return operand
+            tail.rhs = operand.unwrap()
+        
+        return Res.Ok(mathExpr)
+        
+    def parseOperand(self) -> Res[Literal|Attribute, Exception]:
+        # Literal | Attr :
+        operand = self.parseAttribute(canBeAll = False, isConsumed = False)
+        if operand.isErr() and (operand := self.parseValue()).isErr(): return operand
+
+        operand = operand.unwrap()
+        if isinstance(operand, Attribute): self.advance()
+        return Res.Ok(operand)
+
+    def parseValue(self) -> Res[Literal, UnexpectedEOIErr|TokenTypeErr|ValueError]:
         if (token := self.getNextToken([Token.TokenType.INT, Token.TokenType.STR, Token.TokenType.DATE])).isErr():
             return token
         
@@ -139,15 +165,26 @@ class SQLParser:
         
         return Res.Ok(value)
     
+    def parseMathOp(self, *, isConsumed = True) -> Res[MathOp, UnexpectedEOIErr|TokenTypeErr]:
+        # "+" | "-" | "*" | "/" | "%"
+        return self.getNextToken(Token.TokenType.MATH_OP, isConsumed = isConsumed).map(lambda token : MathOp(token.value))
+
     def parseCompareOp(self) -> Res[CompareOp, UnexpectedEOIErr|TokenTypeErr]:
         # "==" | "!=" | "<>" | "<" | ">" | ">=" | "<="
         return self.getNextToken(Token.TokenType.COMPARE_OP).map(lambda token : CompareOp(token.value))
 
-    def parseAttribute(self, *, canBeAll = True) -> Res[Token, UnexpectedEOIErr|TokenTypeErr]:
+    def parseAttribute(self, *, canBeAll = True, isConsumed = True) -> Res[Attribute, Exception]:
         # "*" | IDENT
         acceptedTokenTypes = [Token.TokenType.IDENT]
-        if canBeAll: acceptedTokenTypes.append(Token.TokenType.ALL)
-        return self.getNextToken(acceptedTokenTypes)
+        if canBeAll: acceptedTokenTypes.append(Token.TokenType.MATH_OP)
+        # Error reporting is a bit wonky here ^^^, this is gonna change soon anyways so I'm not too preoccupied.
+        if (attr := self.getNextToken(acceptedTokenTypes, isConsumed = isConsumed)).isErr(): return attr
+
+        attr = attr.unwrap()
+        if attr.type == Token.TokenType.MATH_OP and attr.value != MathOp.MUL.value:
+            return Res.Err(self.TokenTypeErr(acceptedTokenTypes[0]))
+        
+        return Res.Ok(Attribute(attr.value))
     
     def parseTable(self) -> Res[Token, UnexpectedEOIErr|TokenTypeErr]:
         # IDENT
@@ -184,6 +221,11 @@ class SQLParser:
         return Res.Ok(None)
 
 def main() -> None:
-    pass
+    p = SQLParser()
+    p.reset()
+    p.tokenize("a + b * \"Bob\" / d % 12 - f % g * 12\\03\\2002 + i")
+    print(p.tokens)
+
+    print(p.parseMathExpr().unwrap())
 
 if __name__ == "__main__": main()
