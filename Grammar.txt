@@ -18,11 +18,17 @@ Query : Select From Where? ";"?
 
     Where : "WHERE" Predicate
         Predicate : ComparisonExpr (LogicalOp ComparisonExpr)* | "(" Predicate ")"
-            ComparisonExpr : MathExpr (CompareOp MathExpr)? | BetweenExpr
-                MathExpr : Operand | (MathExpr MathOp)* MathExpr
-                    Operand : Literal | Attr
-                    MathOp :: "+" | "-" | "*" | "/" | "%"
-                    Literal :: INT_LITERAL | STR_LITERAL | DATE_LITERAL
+            ComparisonExpr : MathExpr CompareOp MathExpr | BetweenExpr
+                MathExpr : MathExprP1 (MathOpP0 MathExprP1)*
+                    MathExprP1 : MathExprP2 (MathOpP1 MathExprP2)*
+                        MathExprP2 : Operand (MathOpP2 Operand)*
+                            MathOpP2 :: "*" | "/"
+                            Operand : Literal | Attr | "(" MathExpr ")"
+                                Literal :: INT_LITERAL | STR_LITERAL | DATE_LITERAL
+                    
+                        MathOpP1 :: "%"
+                    
+                    MathOpP0 :: "+" | "-"
                 
                 CompareOp :: "==" | "!=" | "<>" | "<" | ">" | ">=" | "<="
                 BetweenExpr : "BETWEEN" MathExpr "AND" MathExpr

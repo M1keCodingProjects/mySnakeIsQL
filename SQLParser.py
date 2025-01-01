@@ -124,24 +124,56 @@ class SQLParser:
 
         return Res.Ok(Predicate(attr.unwrap(), op.unwrap(), value.unwrap()))
 
-    def parseMathExpr(self) -> Res[MathExpr, Exception]:
-        # Operand | (MathExpr MathOp)* MathExpr
-        # Operand
-        if (firstOperand := self.parseOperand()).isErr(): return firstOperand
+    def parsePredicate(self) -> Res[Predicate, Exception]:
+        # ComparisonExpr (LogicalOp ComparisonExpr)* | "(" Predicate ")"
+        # ComparisonExpr
+        if (firstComp := self.parseCompareExpr()).isErr(): return firstComp
 
-        # (MathExpr MathOp)* MathExpr
-        mathExpr = MathExpr(firstOperand.unwrap())
-        while (operator := self.parseMathOp(isConsumed = False)).isOk():
-            mathExpr, tail = mathExpr.addOperation(operator.unwrap())
+        # (LogicalOp ComparisonExpr)*
+        compExprs = [firstComp.unwrap()]
+        while (op := self.parseLogicalOp(isConsumed = False)).isOk():
+            pass #TODO: implement a base class for the common tree-like nature of MathExpr and Predicate
+        
+        # "(" Predicate ")"
+
+    def parseCompareExpr(self) -> Res[CompareExpr, Exception]:
+        # MathExpr CompareOp MathExpr
+        # MathExpr
+        if (lhs := self.parseMathExpr()).isErr(): return lhs
+
+        # CompareOp
+        if (op := self.parseCompareOp()).isErr(): return op
+
+        # MathExpr
+        if (rhs := self.parseMathExpr()).isErr(): return rhs
+
+        return Res.Ok(CompareExpr(lhs, op, rhs))
+
+    def parseMathExpr(self, priority = 0) -> Res[MathExpr, Exception]:
+        # Operand (MathOp Operand)*
+        if priority > MAX_PRIORITY: return self.parseOperand()
+        # ^^^ This technically may violate the signature in the return type, but a max priority call should only
+        # happen internally.
+        
+        if (lhs := self.parseMathExpr(priority + 1)).isErr(): return lhs
+        lhs = lhs.unwrap()
+
+        while (op := self.parseMathOp(isConsumed = False)).isOk() and (op := op.unwrap()).getPriority() == priority:
             self.advance()
+            if (rhs := self.parseMathExpr(priority + 1)).isErr(): return rhs
 
-            if (operand := self.parseOperand()).isErr(): return operand
-            tail.rhs = operand.unwrap()
+            lhs = MathExpr(lhs, op, rhs.unwrap())
         
-        return Res.Ok(mathExpr)
-        
-    def parseOperand(self) -> Res[Literal|Attribute, Exception]:
-        # Literal | Attr :
+        return Res.Ok(lhs)
+
+    def parseOperand(self) -> Res[Operand, Exception]:
+        # Literal | Attr | "(" MathExpr ")"
+        if self.getNextToken(Token.TokenType.LPAREN, isConsumed = False).isOk():
+            self.advance()
+            if (operand := self.parseMathExpr()).isErr(): return operand
+            if (closingParentheses := self.getNextToken(Token.TokenType.RPAREN)).isErr(): return closingParentheses
+            return operand
+
         operand = self.parseAttribute(canBeAll = False, isConsumed = False)
         if operand.isErr() and (operand := self.parseValue()).isErr(): return operand
 
@@ -172,6 +204,10 @@ class SQLParser:
     def parseCompareOp(self) -> Res[CompareOp, UnexpectedEOIErr|TokenTypeErr]:
         # "==" | "!=" | "<>" | "<" | ">" | ">=" | "<="
         return self.getNextToken(Token.TokenType.COMPARE_OP).map(lambda token : CompareOp(token.value))
+
+    def parseLogicalOp(self) -> Res[CompareOp, UnexpectedEOIErr|TokenTypeErr]:
+        # "AND" | "OR"
+        return self.getNextToken(Token.TokenType.LOGIC_OP).map(lambda token : LogicOp(token.value))
 
     def parseAttribute(self, *, canBeAll = True, isConsumed = True) -> Res[Attribute, Exception]:
         # "*" | IDENT
@@ -221,11 +257,12 @@ class SQLParser:
         return Res.Ok(None)
 
 def main() -> None:
+    s = "((a + b) * c - d) / e" #"a % b / (c + d * (f - g)) * e + b * \"Bob\" / d % 12 - f % g * 12\\03\\2002 + i"
     p = SQLParser()
     p.reset()
-    p.tokenize("a + b * \"Bob\" / d % 12 - f % g * 12\\03\\2002 + i")
-    print(p.tokens)
-
+    p.tokenize(s)
+    
+    print(s)
     print(p.parseMathExpr().unwrap())
 
 if __name__ == "__main__": main()

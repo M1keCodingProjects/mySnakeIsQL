@@ -1,15 +1,18 @@
 import re
 from enum      import StrEnum
 from Utils     import Res, asPatternOpts
-from Predicate import CompareOp, MathOp
+from Predicate import LogicOp, CompareOp, MathOp
 
 class Token:
     class TokenType(StrEnum):
         UNKNOWN    = "unknown"
         IGNORED    = "ignored"
         KEYWORD    = "keyword"
+        LPAREN     = "("
+        RPAREN     = ")"
         COMMA      = ","
         END        = ";"
+        LOGIC_OP   = "logical operator"
         COMPARE_OP = "comparison operator"
         INT        = "integer"
         MATH_OP    = "math operator"
@@ -33,6 +36,7 @@ class SQLTokenizer:
     
     def __init__(self) -> None:
         keywords   = [kw.name  for kw in SQLTokenizer.Keyword]
+        logicOps   = [op.value for op in LogicOp]
         compareOps = [op.value for op in CompareOp]
         mathOps    = ['\\' + op.value for op in MathOp]
 
@@ -40,11 +44,14 @@ class SQLTokenizer:
             (r"\s+",                    Token.TokenType.IGNORED),
             (r",",                      Token.TokenType.COMMA),
             (r";",                      Token.TokenType.END),
+            (r"\(",                     Token.TokenType.LPAREN),
+            (r"\)",                     Token.TokenType.RPAREN),
             (r"\d\d?\\\d\d?\\\d{4}",    Token.TokenType.DATE),
             (r"-?\d+",                  Token.TokenType.INT),
             (asPatternOpts(mathOps),    Token.TokenType.MATH_OP),
             (r"(\"|\').*?\1",           Token.TokenType.STR),
             (asPatternOpts(compareOps), Token.TokenType.COMPARE_OP),
+            (asPatternOpts(logicOps),   Token.TokenType.LOGIC_OP),
             (asPatternOpts(keywords),   Token.TokenType.KEYWORD),
             (r"[a-zA-Z_]\w*",           Token.TokenType.IDENT),
         )))
